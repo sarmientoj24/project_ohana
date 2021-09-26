@@ -105,7 +105,7 @@ def get_amenities_tuples(amenities_df):
 
 def compute_accessibility_score(
         amenities_file, centroids_file, 
-        normalize_scores=True, max_study_area=10, 
+        normalize=True, max_study_area=10, 
         output_file='scores.csv'):
     
     # Read files
@@ -123,7 +123,7 @@ def compute_accessibility_score(
     print("Calculating amenity scores...")
     amenity_scores_df = centroids_df.apply(
         get_accessibility_score, axis=1, 
-        args=(amenities_tuples, max_study_area, normalize_scores))
+        args=(amenities_tuples, max_study_area, normalize))
     
     amenity_scores_df.to_csv(output_file, index=False)
     print(f"Saved file to {output_file}")
