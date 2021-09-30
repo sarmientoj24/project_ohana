@@ -1,8 +1,30 @@
 import geopy
 import geopy.distance as dist
-import pandas as pd
 import numpy as np
 import fire
+
+
+PANDAS_MP = True
+
+# To use modin -- a library that wraps pandas for multi-core processing
+if PANDAS_MP:
+    # You need to install modin first
+    # pip install "modin[ray]"
+    import os
+    os.environ["MODIN_ENGINE"] = "ray"
+    import modin.pandas as pd
+    from tqdm import tqdm
+    
+    from modin.config import ProgressBar
+    ProgressBar.enable()
+    
+    import ray
+    ray.init()
+# Use ordinary pandas
+else:
+    import pandas as pd
+    from tqdm import tqdm
+    tqdm.pandas()
 
 
 def get_distance_in_km_gc(pointA, pointB):
@@ -53,7 +75,7 @@ def calculate_hansen_grav_score(distances, coeff=1.75, normalize=False):
         scores = normalize_dist(distances)
 
     scores = scores ** coeff
-    scores = [float(1)/float(x) for x in distances]
+    scores = [float(1)/float(x) for x in scores]
     return np.sum(scores)
 
 
@@ -112,21 +134,27 @@ def compute_accessibility_score(
     amenities_df = pd.read_csv(amenities_file)
     centroids_df = pd.read_csv(centroids_file)
     
-    # Get only these columns and rename
-    centroids_df = centroids_df[['id', 'xcoor', 'ycoor']]
-    centroids_df = centroids_df.rename(columns={'id': 'id', 'xcoor': 'lon', 'ycoor': 'lat'})
-    
     # Get amenities tuples
     amenities_tuples = get_amenities_tuples(amenities_df)
     
     # Calculate Amenity scores
     print("Calculating amenity scores...")
-    amenity_scores_df = centroids_df.apply(
+    
+    # Multi-Process vs Single-Core Process
+    if PANDAS_MP:
+        amenity_scores_df = centroids_df.apply(
         get_accessibility_score, axis=1, 
         args=(amenities_tuples, max_study_area, normalize))
+    else:
+        amenity_scores_df = centroids_df.progress_apply(
+            get_accessibility_score, axis=1, 
+            args=(amenities_tuples, max_study_area, normalize))
     
     amenity_scores_df.to_csv(output_file, index=False)
     print(f"Saved file to {output_file}")
+    
+    if PANDAS_MP:
+        ray.shutdown()
     
 
 if __name__ == "__main__":
